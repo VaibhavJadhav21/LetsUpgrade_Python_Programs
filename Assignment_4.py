@@ -116,4 +116,38 @@ class ReportServiceTest {
         verify(reportDao, times(1))
                 .getSettlementReportData(reportManagementDto);
     }
+
+
+
+@Test
+void generateReport_ShouldGenerateTransactionReportSuccessfully() {
+
+    // Arrange
+    reportManagementDto.setReport(TRANSACTION);
+
+    when(reportManagementDao.updateReportStatus(
+            reportManagementId,
+            ReportStatus.GENERATION_STARTED))
+    .thenReturn(reportManagementDto);
+
+    // List<List<Object>> dummy data context sathi mock kela ahe
+    List<List<Object>> dummyTransactionList = List.of(
+        List.of("dummyField1", "dummyField2", "dummyField3")
+    );
+
+    when(reportDao.getTransaction(reportManagementDto))
+            .thenReturn(dummyTransactionList);
+
+    // Act
+    reportService.generateReport(reportManagementId);
+
+    // Assert
+    verify(reportManagementDao, times(1))
+            .updateReportStatus(
+                    reportManagementId,
+                    ReportStatus.GENERATION_STARTED);
+
+    verify(reportDao, times(1)).getTransaction(reportManagementDto);
+}
+
 }
