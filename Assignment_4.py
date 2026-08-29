@@ -1,46 +1,119 @@
-@Test
-void generateReport_ShouldBuildTransactionReport() {
-    UUID reportManagementId = UUID.randomUUID();
+package com.epay.reporting.service;
 
-    ReportManagementDto dto = new ReportManagementDto();
-    dto.setId(reportManagementId);
-    dto.setReport(ReportType.TRANSACTION);
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-    when(reportManagementDao.updateReportStatus(
-            reportManagementId, ReportStatus.GENERATION_STARTED))
-            .thenReturn(dto);
+import java.util.Collections;
+import java.util.UUID;
 
-    when(reportDao.getTransactionReportData(dto))
-            .thenReturn(transactionReportData);
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-    reportService.generateReport(reportManagementId);
+import com.epay.reporting.dao.ReportDao;
+import com.epay.reporting.dao.ReportManagementDao;
+import com.epay.reporting.dto.ReportManagementDto;
+import com.epay.reporting.enums.ReportStatus;
+import com.epay.reporting.enums.ReportType;
 
-    verify(reportDao).getTransactionReportData(dto);
-    verify(reportManagementDao).updateReportStatus(
-            reportManagementId, ReportStatus.GENERATION_STARTED);
-}
+@ExtendWith(MockitoExtension.class)
+class ReportServiceTest {
 
+    @InjectMocks
+    private ReportService reportService;
 
+    @Mock
+    private ReportManagementDao reportManagementDao;
 
+    @Mock
+    private ReportDao reportDao;
 
-@Test
-void generateReport_ShouldBuildSettlementReport() {
-    UUID reportManagementId = UUID.randomUUID();
+    /*
+     * Add other @Mock dependencies of ReportService here
+     * if they are present in your actual constructor.
+     *
+     * Example:
+     *
+     * @Mock
+     * private ScrollFileService scrollFileService;
+     *
+     * @Mock
+     * private ReportHeaderService reportHeaderService;
+     */
 
-    ReportManagementDto dto = new ReportManagementDto();
-    dto.setId(reportManagementId);
-    dto.setReport(ReportType.SETTLEMENT);
+    private UUID reportManagementId;
+    private ReportManagementDto reportManagementDto;
 
-    when(reportManagementDao.updateReportStatus(
-            reportManagementId, ReportStatus.GENERATION_STARTED))
-            .thenReturn(dto);
+    @BeforeEach
+    void setUp() {
+        reportManagementId = UUID.randomUUID();
 
-    when(reportDao.getSettlementReportData(dto))
-            .thenReturn(settlementReportData);
+        reportManagementDto = new ReportManagementDto();
+        reportManagementDto.setId(reportManagementId);
+    }
 
-    reportService.generateReport(reportManagementId);
+    // =========================================================
+    // TRANSACTION REPORT
+    // =========================================================
 
-    verify(reportDao).getSettlementReportData(dto);
-    verify(reportManagementDao).updateReportStatus(
-            reportManagementId, ReportStatus.GENERATION_STARTED);
+    @Test
+    void generateReport_ShouldGenerateTransactionReportSuccessfully() {
+
+        // Arrange
+        reportManagementDto.setReport(ReportType.TRANSACTION);
+
+        when(reportManagementDao.updateReportStatus(
+                reportManagementId,
+                ReportStatus.GENERATION_STARTED))
+                .thenReturn(reportManagementDto);
+
+        when(reportDao.getTransactionReportData(reportManagementDto))
+                .thenReturn(Collections.emptyList());
+
+        // Act
+        reportService.generateReport(reportManagementId);
+
+        // Assert
+        verify(reportManagementDao, times(1))
+                .updateReportStatus(
+                        reportManagementId,
+                        ReportStatus.GENERATION_STARTED);
+
+        verify(reportDao, times(1))
+                .getTransactionReportData(reportManagementDto);
+    }
+
+    // =========================================================
+    // SETTLEMENT REPORT
+    // =========================================================
+
+    @Test
+    void generateReport_ShouldGenerateSettlementReportSuccessfully() {
+
+        // Arrange
+        reportManagementDto.setReport(ReportType.SETTLEMENT);
+
+        when(reportManagementDao.updateReportStatus(
+                reportManagementId,
+                ReportStatus.GENERATION_STARTED))
+                .thenReturn(reportManagementDto);
+
+        when(reportDao.getSettlementReportData(reportManagementDto))
+                .thenReturn(Collections.emptyList());
+
+        // Act
+        reportService.generateReport(reportManagementId);
+
+        // Assert
+        verify(reportManagementDao, times(1))
+                .updateReportStatus(
+                        reportManagementId,
+                        ReportStatus.GENERATION_STARTED);
+
+        verify(reportDao, times(1))
+                .getSettlementReportData(reportManagementDto);
+    }
 }
