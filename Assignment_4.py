@@ -1,7 +1,59 @@
+
+@Test
+void generateReport_ShouldGenerateTransactionReportSuccessfullys() throws Exception {
+
+    // 1. Header Config Data Setup
+    ReportHeaderConfigDto reportHeaderConfigDto = new ReportHeaderConfigDto();
+    reportHeaderConfigDto.setHeaderJson("{\"Transaction Request Date And Time\": 0}");
+
+    reportManagementDto.setReport(TRANSACTION);
+
+    // 2. Mock DAO Calls
+    when(reportManagementDao.updateReportStatus(
+            reportManagementId,
+            ReportStatus.GENERATION_STARTED))
+    .thenReturn(reportManagementDto);
+
+    // HA CALL MISSING HOTA:
+    when(reportDao.getReportHeaderConfig(reportManagementDto))
+            .thenReturn(reportHeaderConfigDto);
+
+    // 3. Dummy Transaction Data
+    List<List<Object>> dummyTransactionList = List.of(
+        List.of("dummyValue1", "dummyValue2")
+    );
+
+    when(reportDao.getTransaction(reportManagementDto))
+            .thenReturn(dummyTransactionList);
+
+    // Act
+    reportService.generateReport(reportManagementId);
+
+    // Assert
+    verify(reportManagementDao, times(1))
+            .updateReportStatus(
+                    reportManagementId,
+                    ReportStatus.GENERATION_STARTED);
+
+    verify(reportDao, times(1)).getReportHeaderConfig(reportManagementDto);
+    verify(reportDao, times(1)).getTransaction(reportManagementDto);
+}
+
+
+
+
+
+
+
+
+
+
+
+
 @Test
 void generateReport_ShouldGenerateTransactionReportSuccessfully() {
 
-    // 1. Arrange ReportHeaderConfigDto (NullPointer avoid karaynsathi)
+    // 1. Arrange ReportHeaderConigDto (NullPointer avoid karaynsathi)
     ReportHeaderConfigDto reportHeaderConfigDto = new ReportHeaderConfigDto();
     // Jar HeaderJson string require asel tar:
     reportHeaderConfigDto.setHeaderJson("{}"); 
