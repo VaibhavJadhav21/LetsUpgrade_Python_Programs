@@ -1,3 +1,38 @@
+@Test
+void generateReport_ShouldGenerateTransactionReportSuccessfully() {
+
+    // 1. Arrange ReportHeaderConfigDto (NullPointer avoid karaynsathi)
+    ReportHeaderConfigDto reportHeaderConfigDto = new ReportHeaderConfigDto();
+    // Jar HeaderJson string require asel tar:
+    reportHeaderConfigDto.setHeaderJson("{}"); 
+    
+    reportManagementDto.setReport(TRANSACTION);
+    reportManagementDto.setReportHeaderConfigDto(reportHeaderConfigDto); // Setup Header Config
+
+    when(reportManagementDao.updateReportStatus(
+            reportManagementId,
+            ReportStatus.GENERATION_STARTED))
+    .thenReturn(reportManagementDto);
+
+    // 2. Dummy transaction data setup (26+ elements or headers as per your service logic)
+    List<List<Object>> dummyTransactionList = List.of(
+        List.of("val1", "val2", "val3")
+    );
+
+    when(reportDao.getTransaction(reportManagementDto))
+            .thenReturn(dummyTransactionList);
+
+    // Act
+    reportService.generateReport(reportManagementId);
+
+    // Assert
+    verify(reportManagementDao, times(1))
+            .updateReportStatus(
+                    reportManagementId,
+                    ReportStatus.GENERATION_STARTED);
+
+    verify(reportDao, times(1)).getTransaction(reportManagementDto);
+}
 package com.epay.reporting.service;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -149,5 +184,49 @@ void generateReport_ShouldGenerateTransactionReportSuccessfully() {
 
     verify(reportDao, times(1)).getTransaction(reportManagementDto);
 }
+
+
+
+
+
+
+@Test
+void generateReport_ShouldGenerateTransactionReportSuccessfully() {
+
+    // 1. Arrange ReportHeaderConfigDto (NullPointer avoid karaynsathi)
+    ReportHeaderConfigDto reportHeaderConfigDto = new ReportHeaderConfigDto();
+    // Jar HeaderJson string require asel tar:
+    reportHeaderConfigDto.setHeaderJson("{}"); 
+    
+    reportManagementDto.setReport(TRANSACTION);
+    reportManagementDto.setReportHeaderConfigDto(reportHeaderConfigDto); // Setup Header Config
+
+    when(reportManagementDao.updateReportStatus(
+            reportManagementId,
+            ReportStatus.GENERATION_STARTED))
+    .thenReturn(reportManagementDto);
+
+    // 2. Dummy transaction data setup (26+ elements or headers as per your service logic)
+    List<List<Object>> dummyTransactionList = List.of(
+        List.of("val1", "val2", "val3")
+    );
+
+    when(reportDao.getTransaction(reportManagementDto))
+            .thenReturn(dummyTransactionList);
+
+    // Act
+    reportService.generateReport(reportManagementId);
+
+    // Assert
+    verify(reportManagementDao, times(1))
+            .updateReportStatus(
+                    reportManagementId,
+                    ReportStatus.GENERATION_STARTED);
+
+    verify(reportDao, times(1)).getTransaction(reportManagementDto);
+}
+
+
+
 
 }
