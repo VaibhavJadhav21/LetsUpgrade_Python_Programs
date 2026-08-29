@@ -227,6 +227,39 @@ void generateReport_ShouldGenerateTransactionReportSuccessfully() {
 }
 
 
+// Option 1: Map.ofEntries() vaprun (jar setHeaderJson Map ghet asel)
+Map<String, Integer> headerMap = Map.ofEntries(
+    Map.entry("Transaction Request Date And Time", 0),
+    Map.entry("Transaction Success Date And Time", 1),
+    Map.entry("Merchant Order No", 2),
+    Map.entry("SBIEPAY ORDER ID", 3),
+    Map.entry("Cust Id", 4),
+    Map.entry("ATRN", 5),
+    Map.entry("Gateway Trace Number", 6),
+    Map.entry("Pay Mode Code", 7),
+    Map.entry("Gateway Name", 8),
+    Map.entry("Pay Proc", 9),
+    Map.entry("Transaction Currency", 10),
+    Map.entry("Merchant Order Amount", 11),
+    Map.entry("Gateway Posting Amount", 12),
+    Map.entry("Commission", 13),
+    Map.entry("GST", 14),
+    Map.entry("Order Status", 15),
+    Map.entry("Transaction Status", 16),
+    Map.entry("Settlement Status", 17),
+    Map.entry("Refund Status", 18),
+    Map.entry("Chargeback Status", 19),
+    Map.entry("Amount Refunded", 20),
+    Map.entry("Amount Chargeback", 21),
+    Map.entry("CIN Number", 22),
+    Map.entry("Merchant Other Details", 23),
+    Map.entry("Settlement Date", 24),
+    Map.entry("LFD", 25)
+);
+
+// Jar setHeaderJson Map String ghet asel, tar ObjectMapper ne convert kara:
+String headerJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(headerMap);
+reportHeaderConfigDto.setHeaderJson(headerJson);
 
 
 }
