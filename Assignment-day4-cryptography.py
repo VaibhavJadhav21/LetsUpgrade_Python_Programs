@@ -1,68 +1,58 @@
-package com.epay.reporting.service;
+package com.epay.transaction.producer;
 
-import com.epay.reporting.dao.ReportDao;
-import com.epay.reporting.dto.ReportHeaderConfigDto;
-import com.epay.reporting.dto.ReportManagementDto;
-import com.epay.reporting.enums.ReportFormat; // तुमच्या प्रोजेक्टनुसार पॅकेज तपासा
-import com.epay.reporting.model.Report;
-import com.epay.reporting.model.ReportFile;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.epay.transaction.dto.TransactionDataDto;
+import com.epay.common.logging.LoggerFactoryUtility;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Component;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+@Component
+@RequiredArgsConstructor
+public class NspiraSpecificHeaderProducer {
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+    private final Logger log =
+            LoggerFactoryUtility.getLogger(this.getClass());
 
-@ExtendWith(MockitoExtension.class)
-class ReportServiceTest {
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
-    @Mock
-    private ReportDao reportDao;
+    private final ObjectMapper objectMapper;
 
-    @Mock
-    private FileGeneratorService fileGeneratorService;
+    @Value("${spring.kafka.topic.nspiraspecificHeaderTopic}")
+    private String nspiraSpecificHeaderTopic;
 
-    @InjectMocks
-    private ReportService reportService;
+    public void publishTransactionData(TransactionDataDto transactionDataDto) {
 
-    @Test
-    void testMapHeaderAndGenerateReport_Success() {
-        // 1. Setup Input Data
-        ReportManagementDto dto = new ReportManagementDto();
-        dto.setmId(UUID.randomUUID());
-        dto.setFormat(ReportFormat.CSV); // योग्य तो फॉरमॅट सेट करा
+        try {
+            String message =
+                    objectMapper.writeValueAsString(transactionDataDto);
 
-        Report reportName = new Report();
+            kafkaTemplate.send(
+                    nspiraSpecificHeaderTopic,
+                    transactionDataDto.getSbiOrderRefNum(),
+                    message
+            );
 
-        List<List<Object>> fileData = List.of(
-            List.of("Val1", "Val2")
-        );
+            log.info(
+                    "Transaction data published successfully for key: {}",
+                    transactionDataDto.getSbiOrderRefNum()
+            );
 
-        // Mock ReportHeaderConfigDto
-        ReportHeaderConfigDto configDto = new ReportHeaderConfigDto();
-        // headerMapping मध्ये इमेज १ नुसार String key आणि Integer index व्हॅल्यू सेट केली आहे
-        configDto.setHeaderJson(Map.of("Header1", 0, "Header2", 1)); 
+        } catch (JsonProcessingException e) {
 
-        // 2. Stub Mock Calls (इथे NPE येत होता, तो असा सॉल्व्ह होईल)
-        when(reportDao.getReportHeaderConfig(dto)).thenReturn(configDto);
+            log.error(
+                    "Error while publishing transaction data for key: {}",
+                    transactionDataDto.getSbiOrderRefNum(),
+                    e
+            );
 
-        when(fileGeneratorService.generateFile(
-                any(), any(), any(), any(), any()
-        )).thenReturn(new ReportFile());
-
-        // 3. Execute Method 
-        // जर mapHeaderAndGenerateReport ही 'private' असेल, तर हिला कॉल करणाऱ्या सार्वजनिक (public) मेथडद्वारे टेस्ट करा.
-        ReportFile result = reportService.mapHeaderAndGenerateReport(dto, reportName, fileData);
-
-        // 4. Assertions
-        assertNotNull(result);
+            throw new IllegalStateException(
+                    "Failed to publish transaction data to Kafka",
+                    e
+            );
+        }
     }
 }
