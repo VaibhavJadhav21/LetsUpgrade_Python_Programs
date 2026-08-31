@@ -1,74 +1,190 @@
-package com.epay.reporting.dao;
+package com.epay.reporting.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import com.epay.reporting.dao.ReportDao;
 import com.epay.reporting.dto.ReportHeaderConfigDto;
 import com.epay.reporting.dto.ReportManagementDto;
-import com.epay.reporting.entity.ReportHeaderConfig;
-import com.epay.reporting.mapper.ReportHeaderConfigMapper;
-import com.epay.reporting.repository.ReportHeaderConfigRepository;
+import com.epay.reporting.model.Report;
+import com.epay.reporting.model.ReportFile;
+import com.epay.reporting.service.FileGeneratorService;
 
 @ExtendWith(MockitoExtension.class)
-class ReportDaoTest {
+class ReportServiceTest {
 
     @InjectMocks
+    private ReportService reportService;
+
+    @Mock
     private ReportDao reportDao;
 
     @Mock
-    private ReportHeaderConfigRepository reportHeaderConfigRepository;
+    private FileGeneratorService fileGeneratorService;
 
     @Mock
-    private ReportHeaderConfigMapper reportHeaderConfigMapper;
+    private ReportHeaderConfigDto reportHeaderConfigDto;
+
+    @Mock
+    private ReportManagementDto reportManagementDto;
+
+    @Mock
+    private ReportFile expectedReportFile;
 
     @Test
-    void getReportHeaderConfig_shouldReturnReportHeaderConfig() {
+    void mapHeaderAndGenerateReport_shouldGenerateReportSuccessfully() {
 
-        // Given
-        ReportManagementDto reportManagementDto =
-                mock(ReportManagementDto.class);
+        // --------------------------------------------------
+        // GIVEN
+        // --------------------------------------------------
 
-        ReportHeaderConfig reportConfig =
-                mock(ReportHeaderConfig.class);
+        Report reportName = Report.TRANSACTION;
 
-        ReportHeaderConfigDto expectedDto =
-                mock(ReportHeaderConfigDto.class);
+        /*
+         * Header mapping coming from DB
+         *
+         * Header       Index
+         * ------------------
+         * MID          0
+         * Transaction  2
+         * Amount       4
+         */
+        Map<String, Integer> headerMapping =
+                new LinkedHashMap<>();
 
-        when(reportManagementDto.getReportTo())
-                .thenReturn(ReportType.TRANSACTION);
+        headerMapping.put("MID", 0);
+        headerMapping.put("TransactionDate", 2);
+        headerMapping.put("Amount", 4);
+
+        when(reportDao.getReportHeaderConfig(reportManagementDto))
+                .thenReturn(reportHeaderConfigDto);
+
+        when(reportHeaderConfigDto.getHeaderJson())
+                .thenReturn(headerMapping);
+
+        when(reportManagementDto.getFormat())
+                .thenReturn("CSV");
 
         when(reportManagementDto.getMid())
                 .thenReturn("123456");
 
-        when(reportHeaderConfigRepository.findFirstByMid(
-                reportManagementDto.getReportTo().toString(),
-                reportManagementDto.getMid()))
-                .thenReturn(reportConfig);
+        /*
+         * Original file data
+         *
+         * Index:
+         * 0 = MID
+         * 1 = unwanted
+         * 2 = TransactionDate
+         * 3 = unwanted
+         * 4 = Amount
+         */
+        List<List<Object>> fileData = Arrays.asList(
 
-        when(reportHeaderConfigMapper.mapEntityToDto(reportConfig))
-                .thenReturn(expectedDto);
+                Arrays.asList(
+                        "MID001",
+                        "UNWANTED1",
+                        "2026-08-31",
+                        "UNWANTED2",
+                        1000
+                ),
 
-        // When
-        ReportHeaderConfigDto actualDto =
-                reportDao.getReportHeaderConfig(reportManagementDto);
+                Arrays.asList(
+                        "MID002",
+                        "UNWANTED3",
+                        "2026-08-30",
+                        "UNWANTED4",
+                        2000
+                )
+        );
 
-        // Then
-        assertNotNull(actualDto);
-        assertEquals(expectedDto, actualDto);
+        /*
+         * Expected mapped data:
+         *
+         * Only indexes 0, 2, 4 should be picked.
+         */
+        List<List<Object>> expectedMappedData = Arrays.asList(
 
-        verify(reportHeaderConfigRepository, times(1))
-                .findFirstByMid(
-                        reportManagementDto.getReportTo().toString(),
-                        reportManagementDto.getMid());
+                Arrays.asList(
+                        "MID001",
+                        "2026-08-31",
+                        1000
+                ),
 
-        verify(reportHeaderConfigMapper, times(1))
-                .mapEntityToDto(reportConfig);
+                Arrays.asList(
+                        "MID002",
+                        "2026-08-30",
+                        2000
+                )
+        );
+
+        when(fileGeneratorService.generateFile(
+                eq("CSV"),
+                eq(reportName),
+                eq("123456"),
+                eq(Arrays.asList(
+                        "MID",
+                        "TransactionDate",
+                        "Amount"
+                )),
+                eq(expectedMappedData)
+        )).thenReturn(expectedReportFile);
+
+        // --------------------------------------------------
+        // WHEN
+        // --------------------------------------------------
+
+        ReportFile actualResult =
+                ReflectionTestUtils.invokeMethod(
+                        reportService,
+                        "mapHeaderAndGenerateReport",
+                        reportManagementDto,
+                        reportName,
+                        fileData
+                );
+
+        // --------------------------------------------------
+        // THEN
+        // --------------------------------------------------
+
+        assertNotNull(actualResult);
+
+        assertEquals(expectedReportFile, actualResult);
+
+        // DAO should be called once
+        verify(reportDao, times(1))
+                .getReportHeaderConfig(reportManagementDto);
+
+        // Header configuration should be fetched
+        verify(reportHeaderConfigDto, times(1))
+                .getHeaderJson();
+
+        // Report file should be generated with mapped data
+        verify(fileGeneratorService, times(1))
+                .generateFile(
+                        eq("CSV"),
+                        eq(reportName),
+                        eq("123456"),
+                        eq(Arrays.asList(
+                                "MID",
+                                "TransactionDate",
+                                "Amount"
+                        )),
+                        eq(expectedMappedData)
+                );
     }
 }
