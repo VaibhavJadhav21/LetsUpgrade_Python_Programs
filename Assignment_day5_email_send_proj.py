@@ -1,27 +1,77 @@
-def sendMail(email, name):
-    
-    html_text = '''<p><span style="font-family: Courier New, courier;"><span style="background-color: rgb(247, 218, 100);">HEY Rowdy,'''+ name+'''</span>&nbsp;</span></p>
-                <p><span style="font-family: Courier New, courier;"><br></span></p>
-                <p><span style="font-family: Courier New, courier;">How are you this is SAIKIRAN FROM LEtsUpgrade,&nbsp;</span></p>
-                <p><span style="font-family: Courier New, courier;">Cheif Rowdy at LU !!</span></p>
-                <p><span style="font-family: Courier New, courier;">Love teaching you all, hope you like this project&nbsp;</span></p>
-                <p><span style="font-family: Courier New, courier;"><br></span></p>
-                <p><span style="font-family: Courier New, courier;">Regards,&nbsp;</span></p>
-                <p><strong><span style="font-family: Courier New, courier;">Cheif Rowdy,</span></strong></p>
-                <p><span style="font-family: Courier New, courier;"><strong>Saikiran Sondarkar</strong></span></p>'''
+public void processOtherDetails(OtherDetailsDto otherDetailsDto) {
 
-    subject = "Hey Rowdy "+ name + ", you have EMAIL FROM LetsUpgrade"
-    message = emails.html(html=html_text,
-                          subject=subject,
-                          mail_from=('Rowdy LetsUpgrade', 'sai@xyz.com'))
+    JsonNode data = otherDetailsDto.getOtherDetails();
 
-    
-    mail_via_python = message.send(to=email, 
-                               smtp={'host': 'smtp.gmail.com', 
-                                     'timeout': 5,
-                                    'port':587,
-                                    'user':'YOUREMAIL@REQUIRED>COM',
-                                    'password':'YourPassWordREquired',
-                                    'tls':True})
-    return mail_via_python.status_code
-sendMail("abc@gmail.com","SaiKiran")
+    String otherDetailsFormat =
+            merchantInfoDao.getOtherDetailsFormatForMid(otherDetailsDto.getMid());
+
+    if (data == null || data.isNull()) {
+        log.warn("Other Details data is null for Mid: {}", otherDetailsDto.getMid());
+        return;
+    }
+
+    if (otherDetailsFormat == null || otherDetailsFormat.isBlank()) {
+        log.warn("Other Details format is not configured for Mid: {}",
+                otherDetailsDto.getMid());
+        return;
+    }
+
+    try {
+
+        String flattenJson;
+
+        switch (otherDetailsFormat.trim().toUpperCase()) {
+
+            case "JSON":
+                flattenJson = flattenJson(data);
+                break;
+
+            case "DELIMITER": {
+                String value = data.asText();
+
+                String[] values = value.split("\\|", -1);
+
+                ObjectNode node = objectMapper.createObjectNode();
+
+                for (int i = 0; i < values.length; i++) {
+                    node.put(String.valueOf(i), values[i].trim());
+                }
+
+                flattenJson = flattenJson(node);
+                break;
+            }
+
+            case "PLAIN STRING": {
+                ObjectNode node = objectMapper.createObjectNode();
+
+                node.put("0", data.asText());
+
+                flattenJson = flattenJson(node);
+                break;
+            }
+
+            default:
+                throw new IllegalArgumentException(
+                        "Unsupported Other Details format: " + otherDetailsFormat);
+        }
+
+        OtherDetailsInfo otherDetailsInfo = new OtherDetailsInfo();
+
+        otherDetailsInfo.setMid(otherDetailsDto.getMid());
+        otherDetailsInfo.setSbiOrderRefNumber(
+                otherDetailsDto.getSbiOrderRefNumber());
+        otherDetailsInfo.setOtherDetailsJson(
+                otherDetailsDto.getOtherDetails().toString());
+        otherDetailsInfo.setFlattenJson(flattenJson);
+
+        // save
+        otherDetailsInfoRepository.save(otherDetailsInfo);
+
+    } catch (Exception e) {
+        log.error("Error while processing Other Details for Mid: {}",
+                otherDetailsDto.getMid(), e);
+
+        throw new IllegalArgumentException(
+                "Unable to process Other Details", e);
+    }
+}
