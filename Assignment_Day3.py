@@ -1,114 +1,148 @@
-Other Details Publisher – Order Creation API
+Other Details Listener – Summary
 
-Summary
+Overview
 
-As part of the Order Creation API enhancement, an Other Details publisher has been integrated into the order creation flow.
+A dedicated listener has been implemented to consume the Other Details message published from the Order Creation API.
 
-Whenever an order is created successfully, the Order Creation API prepares the Other Details information available in the request/order data and publishes it along with the required transaction identifiers.
-
-The publisher message contains the following three fields:
+The listener receives the following information:
 
 mId
 sbiOrderRefNum
 data
 
-Where:
+The primary responsibility of the listener is to process the received "data" according to the merchant-specific "OtherDetailFormat" configuration and persist the processed information for further use in transaction reports.
 
-- mId – Merchant ID associated with the order.
-- sbiOrderRefNum – SBI Order Reference Number generated/associated with the order.
-- data – Other Details received during order creation, represented as "JsonNode".
+Listener Flow
 
-Order Creation Flow
+Kafka Topic
+     |
+     v
+Other Details Listener
+     |
+     v
+Receive Message
+     |
+     +----------------------------+
+     |            |               |
+     v            v               v
+    mId     sbiOrderRefNum       data
+     |            |               |
+     +------------+---------------+
+                  |
+                  v
+          Fetch Merchant Info
+                  |
+                  v
+        Read OtherDetailFormat
+                  |
+       +----------+----------+
+       |          |          |
+       v          v          v
+      JSON    PLAIN STRING  DELIMITER
+       |          |          |
+       +----------+----------+
+                  |
+                  v
+              Parse Data
+                  |
+                  v
+               JsonNode
+                  |
+                  v
+        Store Other Details
 
-Order Creation API
-        |
-        v
-Validate Request
-        |
-        v
-Create Order
-        |
-        v
-Prepare Other Details
-        |
-        v
-Create Publisher DTO
-        |
-        +-------------------------+
-        |           |             |
-        v           v             v
-      mId    sbiOrderRefNum      data
-        |           |             |
-        +-----------+-------------+
-                    |
-                    v
-             Publish Message
-                    |
-                    v
-              Kafka Topic
-                    |
-                    v
-             Consumer/Listener
+Format-Based Processing
 
-Publisher DTO
+The listener does not assume a fixed format for the incoming data.
 
-The publisher DTO contains:
+It retrieves "OtherDetailFormat" from the merchant configuration.
 
-private String mId;
-private String sbiOrderRefNum;
-private JsonNode data;
+Supported formats are:
 
-Using "JsonNode" for "data" allows the API to publish dynamic Other Details without defining separate DTOs for merchant-specific fields.
+JSON
+PLAIN STRING
+DELIMITER
 
-For example, SBI Other Details may contain:
+The format is passed to the common parsing logic:
+
+JsonNode parsedData = parseData(
+        transactionMessage.getData(),
+        merchantInfo.getOtherDetailFormat()
+);
+
+The parsing logic uses a "switch" based on the configured format.
+
+JSON Processing
+
+For JSON data, the listener retains the original JSON structure as a "JsonNode".
+
+For example:
 
 {
   "Admno": 2477687,
   "GatewayKey": 301,
   "Heads": {
     "CourseAmount": 1,
-    "OtherAmount": 0,
-    "TransportAmount": 0
+    "OtherAmount": 0
   }
 }
 
-The complete structure is passed as "data" to the publisher.
+Nested data can subsequently be flattened for report/header mapping while retaining the original JSON structure.
 
-Responsibility of the Order Creation API
+Example flattened keys:
 
-The Order Creation API is responsible for:
+Admno
+GatewayKey
+Heads.CourseAmount
+Heads.OtherAmount
 
-1. Creating the order.
-2. Collecting the required transaction identifiers.
-3. Preparing the Other Details data.
-4. Creating the publisher DTO.
-5. Publishing the message.
+Persistence
 
-The API does not perform report header mapping or flattening.
+After parsing, the listener stores the Other Details against the transaction using:
 
-Downstream Processing
+- Merchant ID
+- SBI Order Reference Number
+- Original/processed JSON
+- Flattened JSON
 
-After publication, the consumer/listener processes the message.
+This allows the information to be retrieved later during transaction report generation.
 
-The consumer:
+Key Responsibilities
 
-- Retrieves the merchant configuration.
-- Reads "OtherDetailFormat".
-- Determines whether the data is "JSON", "PLAIN STRING", or "DELIMITER".
-- Parses the data into the required structure.
-- Stores the Other Details.
-- Makes the data available for transaction report generation.
+The listener is responsible for:
 
-This keeps the Order Creation API lightweight while allowing the downstream service to handle format-specific processing.
+1. Consuming the Other Details message.
+2. Extracting "mId", "sbiOrderRefNum", and "data".
+3. Fetching the merchant configuration.
+4. Reading "OtherDetailFormat".
+5. Parsing the incoming data based on the configured format.
+6. Converting the result into "JsonNode".
+7. Creating the required flattened representation for mapping.
+8. Persisting the Other Details.
+9. Ensuring the processed information is available for report generation.
 
-Key Design Point
+Design Benefit
 
-The publisher is triggered as part of the Order Creation API flow, ensuring that the Other Details associated with the newly created order are published at the time of order creation.
+The listener provides a common processing layer for different merchants and data formats.
 
-The publisher follows a common message structure:
+The Order Creation API only publishes the data, while the listener handles format-specific processing and persistence.
 
-mId + sbiOrderRefNum + data
+This provides a clean separation:
 
-and uses "JsonNode" for flexible Other Details handling.
-
-This approach avoids hard-coding merchant-specific fields in the Order Creation API and allows the downstream processing flow to support different Other Details formats through configuration.
+Order Creation API
+       |
+       | Publish
+       v
+Kafka
+       |
+       | Consume
+       v
+Listener
+       |
+       | Parse + Store
+       v
+Other Details
+       |
+       | Map
+       v
+Transaction Report
