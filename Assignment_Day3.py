@@ -1,80 +1,66 @@
-Transaction Service – Other Details Publisher
+Other Details Publisher – Order Creation API
 
-1. Purpose
+Summary
 
-The Publisher is implemented in the Transaction Service to send Other Details information to the downstream service responsible for processing and storing the data.
+As part of the Order Creation API enhancement, an Other Details publisher has been integrated into the order creation flow.
 
-The main purpose of the publisher is to transfer the following information:
+Whenever an order is created successfully, the Order Creation API prepares the Other Details information available in the request/order data and publishes it along with the required transaction identifiers.
 
-- Merchant ID ("mId")
-- SBI Order Reference Number ("sbiOrderRefNum")
-- Other Details data ("data")
+The publisher message contains the following three fields:
 
-The publisher does not perform the report mapping itself. Its responsibility is to package the transaction information into a message and publish it to the configured messaging topic.
+mId
+sbiOrderRefNum
+data
 
----
+Where:
 
-2. Publisher Flow
+- mId – Merchant ID associated with the order.
+- sbiOrderRefNum – SBI Order Reference Number generated/associated with the order.
+- data – Other Details received during order creation, represented as "JsonNode".
 
-The overall publisher flow is:
+Order Creation Flow
 
-Transaction Processing
+Order Creation API
         |
         v
-Other Details Available
+Validate Request
+        |
+        v
+Create Order
+        |
+        v
+Prepare Other Details
         |
         v
 Create Publisher DTO
         |
-        +----------------------+
-        |                      |
-        v                      v
-       mId              sbiOrderRefNum
-        |                      |
-        +----------+-----------+
-                   |
-                   v
-                 data
-                   |
-                   v
-          Publish Message
-                   |
-                   v
+        +-------------------------+
+        |           |             |
+        v           v             v
+      mId    sbiOrderRefNum      data
+        |           |             |
+        +-----------+-------------+
+                    |
+                    v
+             Publish Message
+                    |
+                    v
               Kafka Topic
-                   |
-                   v
+                    |
+                    v
              Consumer/Listener
 
-The publisher is therefore the entry point for transferring Other Details from the Transaction Service to the downstream processing service.
+Publisher DTO
 
----
-
-3. Publisher DTO
-
-A dedicated DTO is used for the message.
-
-The DTO contains three fields:
+The publisher DTO contains:
 
 private String mId;
 private String sbiOrderRefNum;
 private JsonNode data;
 
-Field Description
+Using "JsonNode" for "data" allows the API to publish dynamic Other Details without defining separate DTOs for merchant-specific fields.
 
-Field| Type| Description
-"mId"| String| Merchant identifier
-"sbiOrderRefNum"| String| SBI order reference number used to identify the transaction
-"data"| JsonNode| Other Details received/generated for the transaction
-
-Using "JsonNode" for "data" allows the publisher to send flexible Other Details without creating a separate DTO for every merchant-specific structure.
-
----
-
-4. Why JsonNode Is Used for Data
-
-The Other Details structure can differ from merchant to merchant.
-
-For example, SBI can provide nested JSON:
+For example, SBI Other Details may contain:
 
 {
   "Admno": 2477687,
@@ -86,288 +72,43 @@ For example, SBI can provide nested JSON:
   }
 }
 
-Instead of converting this into a fixed Java object, the publisher keeps the structure as a "JsonNode".
+The complete structure is passed as "data" to the publisher.
 
-This provides the following benefits:
+Responsibility of the Order Creation API
 
-- Supports dynamic fields.
-- Supports nested JSON.
-- Avoids creating merchant-specific DTOs.
-- Preserves the original structure.
-- Allows the consumer to process the data according to "OtherDetailFormat".
+The Order Creation API is responsible for:
 
----
+1. Creating the order.
+2. Collecting the required transaction identifiers.
+3. Preparing the Other Details data.
+4. Creating the publisher DTO.
+5. Publishing the message.
 
-5. Publisher Trigger
+The API does not perform report header mapping or flattening.
 
-The publisher is invoked when the Transaction Service has Other Details that need to be transferred.
+Downstream Processing
 
-The transaction processing flow identifies the relevant transaction information and prepares the publisher request.
+After publication, the consumer/listener processes the message.
 
-Conceptually:
+The consumer:
 
-OtherDetailPublisherDto message =
-        new OtherDetailPublisherDto(
-                transaction.getMid(),
-                transaction.getSbiOrderRefNum(),
-                otherDetails
-        );
+- Retrieves the merchant configuration.
+- Reads "OtherDetailFormat".
+- Determines whether the data is "JSON", "PLAIN STRING", or "DELIMITER".
+- Parses the data into the required structure.
+- Stores the Other Details.
+- Makes the data available for transaction report generation.
 
-The message is then passed to the Kafka publisher.
+This keeps the Order Creation API lightweight while allowing the downstream service to handle format-specific processing.
 
----
+Key Design Point
 
-6. Message Creation
+The publisher is triggered as part of the Order Creation API flow, ensuring that the Other Details associated with the newly created order are published at the time of order creation.
 
-The publisher creates a message containing the three required values:
+The publisher follows a common message structure:
 
-mId
-sbiOrderRefNum
-data
+mId + sbiOrderRefNum + data
 
-Example:
+and uses "JsonNode" for flexible Other Details handling.
 
-{
-  "mId": "123456",
-  "sbiOrderRefNum": "SBIORD123456",
-  "data": {
-    "Admno": 2477687,
-    "GatewayKey": 301,
-    "Heads": {
-      "CourseAmount": 1,
-      "OtherAmount": 0
-    }
-  }
-}
-
-The complete "data" object is kept as JSON rather than extracting individual fields at the publisher level.
-
----
-
-7. Kafka Publishing
-
-Once the DTO is prepared, the publisher sends the message to the configured Kafka topic.
-
-Conceptually:
-
-kafkaTemplate.send(topic, message);
-
-The publisher is responsible only for publishing the message.
-
-The downstream listener is responsible for:
-
-1. Receiving the message.
-2. Fetching merchant configuration.
-3. Reading "OtherDetailFormat".
-4. Parsing the data.
-5. Storing the Other Details.
-6. Making the data available for report generation.
-
----
-
-8. Separation of Responsibility
-
-The implementation follows a clear separation of responsibilities.
-
-Transaction Service / Publisher
-
-Responsible for:
-
-Prepare Data
-     ↓
-Create DTO
-     ↓
-Publish Message
-
-Consumer / Listener
-
-Responsible for:
-
-Consume Message
-     ↓
-Read Merchant Configuration
-     ↓
-Identify OtherDetailFormat
-     ↓
-Parse Data
-     ↓
-Store Other Details
-
-Report Generation
-
-Responsible for:
-
-Fetch Other Details
-     ↓
-Flatten / Map Data
-     ↓
-Map to OtherDetail Header
-     ↓
-Generate Report
-
-This prevents report-specific logic from being introduced into the Transaction Service publisher.
-
----
-
-9. Handling Different Data Formats
-
-The publisher does not need separate publishing logic for:
-
-- JSON
-- Plain String
-- Delimiter
-
-The publisher sends the available data in the common "data" field.
-
-The actual format is determined using merchant configuration.
-
-For example:
-
-Merchant Configuration
-        |
-        v
-OtherDetailFormat = JSON
-        |
-        v
-Consumer parses JSON
-
-or:
-
-Merchant Configuration
-        |
-        v
-OtherDetailFormat = PLAIN STRING
-        |
-        v
-Consumer parses plain string
-
-or:
-
-Merchant Configuration
-        |
-        v
-OtherDetailFormat = DELIMITER
-        |
-        v
-Consumer parses delimiter data
-
-This keeps the publisher simple and makes the solution configuration-driven.
-
----
-
-10. Example – SBI JSON Data
-
-For the SBI use case, the publisher can send:
-
-{
-  "mId": "123456",
-  "sbiOrderRefNum": "SBI123456789",
-  "data": {
-    "Admno": 2477687,
-    "GatewayKey": 301,
-    "Heads": {
-      "CourseAmount": 1,
-      "OtherAmount": 0,
-      "TransportAmount": 0,
-      "MaterialAmount": 0,
-      "UniformAmnt": 0,
-      "UniformFeeS": 0,
-      "Ino": 0,
-      "Exam": 0
-    },
-    "ApexId": "ABC123",
-    "AcademicYear": "2026",
-    "AppSource": "SBI"
-  }
-}
-
-The publisher sends this message without changing the nested structure.
-
-The consumer can then flatten the required fields for report mapping.
-
----
-
-11. Benefits of the Publisher Design
-
-The new publisher design provides:
-
-- Loose coupling between Transaction Service and report processing.
-- Dynamic data support through "JsonNode".
-- Merchant-specific flexibility.
-- No hard-coded Other Details fields.
-- No report-specific parsing logic in Transaction Service.
-- Easy extension if additional Other Details fields are introduced.
-- Consistent message structure across different merchants.
-
----
-
-12. End-to-End Publisher and Consumer Flow
-
-                    TRANSACTION SERVICE
-                           |
-                           v
-                  Transaction Completed
-                           |
-                           v
-                   Other Details Found
-                           |
-                           v
-                Create Publisher DTO
-                           |
-              +------------+------------+
-              |            |            |
-              v            v            v
-             mId     sbiOrderRefNum     data
-              |            |            |
-              +------------+------------+
-                           |
-                           v
-                    Kafka Publisher
-                           |
-                           v
-                      Kafka Topic
-                           |
-                           v
-                    Other Details
-                       Listener
-                           |
-                           v
-                Fetch Merchant Info
-                           |
-                           v
-                  OtherDetailFormat
-                           |
-              +------------+------------+
-              |            |            |
-             JSON      PLAIN STRING   DELIMITER
-              |            |            |
-              +------------+------------+
-                           |
-                           v
-                       JsonNode
-                           |
-                           v
-                 Store Other Details
-                           |
-                           v
-                  Report Generation
-                           |
-                           v
-                 Existing Headers
-                           +
-                    OtherDetail
-                           |
-                           v
-                    Final Report
-
-13. Key Design Decision
-
-The important design decision is that format-specific processing is not performed by the publisher.
-
-The publisher has a simple responsibility:
-
-«Publish "mId", "sbiOrderRefNum", and "data" as a single message.»
-
-The consumer uses the merchant's "OtherDetailFormat" configuration to determine how the "data" should be interpreted.
-
-This keeps the Transaction Service independent of merchant-specific report requirements and makes the overall implementation easier to maintain and extend.
+This approach avoids hard-coding merchant-specific fields in the Order Creation API and allows the downstream processing flow to support different Other Details formats through configuration.
