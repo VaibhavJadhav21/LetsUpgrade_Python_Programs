@@ -1,29 +1,34 @@
-public List<MerchantRfCResponse> updateMerchantRfCInfo(
-        String mid, RiskManagementDto riskManagementDto) {
+@Transactional
+public List<MerchantEntity> updateMerchant(
+        String mId,
+        List<MerchantUpdateRequestDto> requestList) {
 
-    List<MerchantRfC> existingRfCList =
-            merchantRfCRepository.findByMerchantId(mid);
+    List<MerchantEntity> existingRecords =
+            merchantRepository.findByMId(mId);
 
-    if (existingRfCList.isEmpty()) {
-        logger.error("Database merchantRfC list is empty for MID: {}", mid);
-        throw new AdminPortalException(
-                ErrorConstants.VOLUME_ERROR_CODE,
-                ErrorConstants.VOLUME_ERROR_MESSAGE);
+    if (CollectionUtils.isEmpty(existingRecords)) {
+        throw new ResourceNotFoundException(
+                "No records found for mId: " + mId);
     }
 
-    List<MerchantRfC> rfCtoList = riskManagementDto.getMerchantRfC();
+    Map<Long, MerchantEntity> existingById =
+            existingRecords.stream()
+                    .collect(Collectors.toMap(
+                            MerchantEntity::getId,
+                            Function.identity()));
 
-    if (rfCtoList == null || rfCtoList.isEmpty()) {
-        return merchantRfCMapper.mapEntityToResponse(existingRfCList);
+    for (MerchantUpdateRequestDto request : requestList) {
+
+        MerchantEntity existing =
+                existingById.get(request.getId());
+
+        if (existing == null) {
+            throw new ResourceNotFoundException(
+                    "Record not found for id: " + request.getId());
+        }
+
+        merchantMapper.updateEntityFromRequest(request, existing);
     }
 
-    List<MerchantRfC> entitiesToSave =
-            merchantRfCMapper.mapToListEntityList(rfCtoList);
-
-    entitiesToSave.forEach(entity -> entity.setMerchantId(mid));
-
-    List<MerchantRfC> savedRfCList =
-            merchantRfCRepository.saveAll(entitiesToSave);
-
-    return merchantRfCMapper.mapEntityToResponse(savedRfCList);
+    return merchantRepository.saveAll(existingRecords);
 }
