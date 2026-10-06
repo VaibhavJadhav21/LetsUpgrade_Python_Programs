@@ -1,133 +1,114 @@
-public List<MerchantVvlRuleDto> getMerchantVvlRuleInfo(String mId) {
+@Entity
+@Table(name = "MERCHANT_CURRENCY_COMBINATION_MAPPING")
+public class MerchantCurrencyCombinationMapping {
 
-    logger.info("Fetching VVL details for merchantId: {}", mId);
+    @Id
+    @Column(name = "ID")
+    private String id;
 
-    List<MerchantVvlRuleDto> result = new ArrayList<>();
+    @Column(name = "AGGREGATOR_CODE")
+    private String aggregatorCode;
 
-    // 1. Fetch currency combinations using MID
-    List<MerchantCurrencyCombination> currencyCombinations =
-            merchantCurrencyCombinationRepository
-                    .findByMerchantId(mId);
+    @Column(name = "CURRENCY_COMB_CODE")
+    private String currencyCombCode;
 
-    if (CollectionUtils.isEmpty(currencyCombinations)) {
-        return result;
-    }
+    @Column(name = "PAYMODE_CODE")
+    private String paymodeCode;
 
-    /*
-     * Keeps only unique:
-     * ORDER_CURRENCY + PAYMODE
-     *
-     * Example:
-     * INR + CC
-     * INR + UPI
-     * USD + CC
-     */
-    Set<String> processedCombinations = new HashSet<>();
-
-    // 2. Process merchant currency combinations
-    for (MerchantCurrencyCombination combination : currencyCombinations) {
-
-        String currencyCombCode =
-                combination.getCurrencyCombCode();
-
-        if (currencyCombCode == null) {
-            continue;
-        }
-
-        // 3. Find currency combination master
-        Optional<CurrencyCombinationMaster> masterOptional =
-                currencyCombinationMasterRepository
-                        .findByCurrencyCombCode(currencyCombCode);
-
-        if (masterOptional.isEmpty()) {
-            continue;
-        }
-
-        CurrencyCombinationMaster master =
-                masterOptional.get();
-
-        String orderCurrency =
-                master.getOrderCurrencyCode();
-
-        if (orderCurrency == null) {
-            continue;
-        }
-
-        // 4. Find paymodes for this currency combination
-        List<CurrencyCombPaymodeMapping> paymodeMappings =
-                currencyCombPaymodeMappingRepository
-                        .findByCurrencyCombCode(currencyCombCode);
-
-        if (CollectionUtils.isEmpty(paymodeMappings)) {
-            continue;
-        }
-
-        // 5. Process unique paymodes
-        for (CurrencyCombPaymodeMapping paymodeMapping
-                : paymodeMappings) {
-
-            String paymodeCode =
-                    paymodeMapping.getPaymodeCode();
-
-            if (paymodeCode == null) {
-                continue;
-            }
-
-            /*
-             * Avoid duplicate:
-             *
-             * INR-INR + CC
-             * INR-USD + CC
-             *
-             * Both can produce:
-             *
-             * INR + CC
-             */
-            String uniqueKey =
-                    orderCurrency + "|" + paymodeCode;
-
-            if (!processedCombinations.add(uniqueKey)) {
-                continue;
-            }
-
-            // 6. Check VVL data using MID
-            Optional<MerchantVvlRule> vvlOptional =
-                    merchantVvlRuleRepository
-                            .findByMerchantIdAndOrderCurrencyCodeAndPaymodeCode(
-                                    mId,
-                                    orderCurrency,
-                                    paymodeCode
-                            );
-
-            if (vvlOptional.isPresent()) {
-
-                // VVL data available
-                result.add(
-                        merchantVvlRuleMapper.toDto(
-                                vvlOptional.get()
-                        )
-                );
-
-            } else {
-
-                // VVL data not available
-                // Return default DTO
-                result.add(
-                        createDefaultVvlDto(
-                                mId,
-                                orderCurrency,
-                                paymodeCode
-                        )
-                );
-            }
-        }
-    }
-
-    logger.info(
-            "VVL details fetched successfully for merchantId={}, count={}",
-            mId,
-            result.size()
-    );
-
-    return result;
+    // getters and setters
 }
+
+
+
+
+@Entity
+@Table(name = "CURRENCY_COMBINATION_MASTER")
+public class CurrencyCombinationMaster {
+
+    @Id
+    private String currencyCombCode;
+
+    @Column(name = "ORDER_CURRENCY_CODE")
+    private String orderCurrencyCode;
+
+    @Column(name = "PAYMENT_CURRENCY_CODE")
+    private String paymentCurrencyCode;
+
+    // getters and setters
+}
+
+
+@Entity
+@Table(name = "MERCHANT_PAYMODE_MAPPING")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class MerchantPaymodeMapping {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "ID")
+    private Long id;
+
+    @Column(name = "MERCHANT_ID")
+    private String merchantId;
+
+    @Column(name = "CURRENCY_COMB_CODE")
+    private String currencyCombCode;
+
+    @Column(name = "PAYMODE_CODE")
+    private String paymodeCode;
+
+    @Column(name = "CREATED_AT")
+    private LocalDateTime createdAt;
+
+    @Column(name = "UPDATED_AT")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "CREATED_BY")
+    private String createdBy;
+
+    @Column(name = "UPDATED_BY")
+    private String updatedBy;
+}
+
+
+
+
+@Repository
+public interface MerchantPaymodeMappingRepository
+        extends JpaRepository<MerchantPaymodeMapping, Long> {
+
+    List<MerchantPaymodeMapping> findByMerchantId(String merchantId);
+
+    List<MerchantPaymodeMapping> findByMerchantIdAndCurrencyCombCode(
+            String merchantId,
+            String currencyCombCode);
+}
+
+
+
+
+@Repository
+public interface CurrencyCombinationMasterRepository
+        extends JpaRepository<CurrencyCombinationMaster, String> {
+
+    Optional<CurrencyCombinationMaster>
+    findByCurrencyCombCode(String currencyCombCode);
+}
+
+
+
+@Repository
+public interface MerchantCurrencyCombinationMappingRepository
+        extends JpaRepository<MerchantCurrencyCombinationMapping, String> {
+
+    List<MerchantCurrencyCombinationMapping>
+    findByAggregatorCode(String aggregatorCode);
+}
+
+
+
+
+
