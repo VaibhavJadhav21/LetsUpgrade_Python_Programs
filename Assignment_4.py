@@ -1,209 +1,131 @@
 public List<MerchantVvlRuleDto> getMerchantVvlRuleInfo(String mId) {
 
-    logger.info("Fetching Merchant VVL details for merchantId: {}", mId);
+    logger.info("Fetching VVL details for merchantId: {}", mId);
 
     List<MerchantVvlRuleDto> result = new ArrayList<>();
 
-    /*
-     * Step 1:
-     * Get merchant information using mId.
-     *
-     * We need AGGREGATOR_CODE because
-     * MERCHANT_CURRENCY_COMBINATION_MAPPING contains
-     * AGGREGATOR_CODE, not MERCHANT_ID.
-     */
-    MerchantInfoDto merchantInfo = getMerchantInfo(mId);
+    // 1. Fetch currency combinations using MID
+    List<MerchantCurrencyCombination> currencyCombinations =
+            merchantCurrencyCombinationRepository
+                    .findByMerchantId(mId);
 
-    if (merchantInfo == null || merchantInfo.getAggregatorCode() == null) {
-        logger.warn("Aggregator code not found for merchantId: {}", mId);
-        return result;
-    }
-
-    String aggregatorCode = merchantInfo.getAggregatorCode();
-
-    logger.info(
-            "Aggregator code {} found for merchantId {}",
-            aggregatorCode,
-            mId
-    );
-
-    /*
-     * Step 2:
-     * Get currency combination + paymode mapping.
-     *
-     * Table:
-     * MERCHANT_CURRENCY_COMBINATION_MAPPING
-     *
-     * AGGREGATOR_CODE
-     * CURRENCY_COMB_CODE
-     * PAYMODE_CODE
-     */
-    List<MerchantCurrencyCombinationMapping> mappings =
-            merchantCurrencyCombinationMappingRepository
-                    .findByAggregatorCode(aggregatorCode);
-
-    if (mappings == null || mappings.isEmpty()) {
-        logger.info(
-                "No currency/paymode mapping found for aggregatorCode: {}",
-                aggregatorCode
-        );
+    if (CollectionUtils.isEmpty(currencyCombinations)) {
         return result;
     }
 
     /*
-     * Step 3:
-     * We need UNIQUE:
-     *
-     * ORDER_CURRENCY_CODE + PAYMODE_CODE
-     *
-     * because multiple currency combinations can have
-     * same order currency.
+     * Keeps only unique:
+     * ORDER_CURRENCY + PAYMODE
      *
      * Example:
-     *
-     * INR-INR -> CC
-     * INR-USD -> CC
-     *
-     * Both give:
-     *
      * INR + CC
-     *
-     * So return only one.
+     * INR + UPI
+     * USD + CC
      */
-    Set<String> processedCombination = new HashSet<>();
+    Set<String> processedCombinations = new HashSet<>();
 
-    /*
-     * Step 4:
-     * Process every mapping.
-     */
-    for (MerchantCurrencyCombinationMapping mapping : mappings) {
+    // 2. Process merchant currency combinations
+    for (MerchantCurrencyCombination combination : currencyCombinations) {
 
-        String currencyCombCode = mapping.getCurrencyCombCode();
-        String paymodeCode = mapping.getPaymodeCode();
+        String currencyCombCode =
+                combination.getCurrencyCombCode();
 
-        if (currencyCombCode == null || paymodeCode == null) {
+        if (currencyCombCode == null) {
             continue;
         }
 
-        /*
-         * Step 5:
-         * Get ORDER_CURRENCY_CODE from
-         * CURRENCY_COMBINATION_MASTER
-         */
+        // 3. Find currency combination master
         Optional<CurrencyCombinationMaster> masterOptional =
                 currencyCombinationMasterRepository
                         .findByCurrencyCombCode(currencyCombCode);
 
         if (masterOptional.isEmpty()) {
-            logger.warn(
-                    "Currency combination not found: {}",
-                    currencyCombCode
-            );
             continue;
         }
 
         CurrencyCombinationMaster master =
                 masterOptional.get();
 
-        String orderCurrencyCode =
+        String orderCurrency =
                 master.getOrderCurrencyCode();
 
-        if (orderCurrencyCode == null) {
+        if (orderCurrency == null) {
             continue;
         }
 
-        /*
-         * Step 6:
-         * Create unique key.
-         *
-         * Example:
-         * INR + CC = INR|CC
-         * USD + CC = USD|CC
-         * USD + UPI = USD|UPI
-         */
-        String uniqueKey =
-                orderCurrencyCode + "|" + paymodeCode;
+        // 4. Find paymodes for this currency combination
+        List<CurrencyCombPaymodeMapping> paymodeMappings =
+                currencyCombPaymodeMappingRepository
+                        .findByCurrencyCombCode(currencyCombCode);
 
-        /*
-         * If already processed, don't add duplicate DTO.
-         */
-        if (!processedCombination.add(uniqueKey)) {
-            logger.debug(
-                    "Skipping duplicate combination: {}",
-                    uniqueKey
-            );
+        if (CollectionUtils.isEmpty(paymodeMappings)) {
             continue;
         }
 
-        /*
-         * Step 7:
-         * Check VVL table.
-         *
-         * VVL table contains:
-         *
-         * MERCHANT_ID
-         * ORDER_CURRENCY_CODE
-         * PAYMODE_CODE
-         */
-        Optional<MerchantVvlRule> vvlRuleOptional =
-                merchantVvlRuleRepository
-                        .findByMerchantIdAndOrderCurrencyCodeAndPaymodeCode(
-                                mId,
-                                orderCurrencyCode,
-                                paymodeCode
-                        );
+        // 5. Process unique paymodes
+        for (CurrencyCombPaymodeMapping paymodeMapping
+                : paymodeMappings) {
 
-        /*
-         * Step 8:
-         * If VVL data exists -> return actual VVL data.
-         */
-        if (vvlRuleOptional.isPresent()) {
+            String paymodeCode =
+                    paymodeMapping.getPaymodeCode();
 
-            MerchantVvlRule vvlRule =
-                    vvlRuleOptional.get();
-
-            logger.info(
-                    "VVL data found for merchantId={}, currency={}, paymode={}",
-                    mId,
-                    orderCurrencyCode,
-                    paymodeCode
-            );
-
-            result.add(
-                    merchantVvlRuleMapper.toDto(vvlRule)
-            );
-
-        } else {
+            if (paymodeCode == null) {
+                continue;
+            }
 
             /*
-             * Step 9:
-             * VVL data doesn't exist.
+             * Avoid duplicate:
              *
-             * Create default DTO using:
-             * merchantId
-             * orderCurrency
-             * paymode
+             * INR-INR + CC
+             * INR-USD + CC
+             *
+             * Both can produce:
+             *
+             * INR + CC
              */
-            logger.info(
-                    "VVL data not found. Creating default DTO for merchantId={}, currency={}, paymode={}",
-                    mId,
-                    orderCurrencyCode,
-                    paymodeCode
-            );
+            String uniqueKey =
+                    orderCurrency + "|" + paymodeCode;
 
-            MerchantVvlRuleDto defaultDto =
-                    createDefaultVvlDto(
-                            mId,
-                            orderCurrencyCode,
-                            paymodeCode
-                    );
+            if (!processedCombinations.add(uniqueKey)) {
+                continue;
+            }
 
-            result.add(defaultDto);
+            // 6. Check VVL data using MID
+            Optional<MerchantVvlRule> vvlOptional =
+                    merchantVvlRuleRepository
+                            .findByMerchantIdAndOrderCurrencyCodeAndPaymodeCode(
+                                    mId,
+                                    orderCurrency,
+                                    paymodeCode
+                            );
+
+            if (vvlOptional.isPresent()) {
+
+                // VVL data available
+                result.add(
+                        merchantVvlRuleMapper.toDto(
+                                vvlOptional.get()
+                        )
+                );
+
+            } else {
+
+                // VVL data not available
+                // Return default DTO
+                result.add(
+                        createDefaultVvlDto(
+                                mId,
+                                orderCurrency,
+                                paymodeCode
+                        )
+                );
+            }
         }
     }
 
     logger.info(
-            "Merchant VVL details fetched successfully. Total records: {}",
+            "VVL details fetched successfully for merchantId={}, count={}",
+            mId,
             result.size()
     );
 
