@@ -1,55 +1,43 @@
-// 5. Get paymodes from MERCHANT_PAYMODE_MAPPING
-List<MerchantPaymodeMapping> paymodeMappings =
-        merchantPaymodeMappingRepository
-                .findByMerchantIdAndCurrencyCombCode(
-                        mId,
-                        currencyCombCode
-                );
+@Query("""
+    SELECT DISTINCT c.orderCurrencyCode
+    FROM MerchantCurrencyCombinationMapping m
+    JOIN CurrencyCombinationMaster c
+      ON c.currencyCombCode = m.currencyCombCode
+    WHERE m.merchantId = :merchantId
+      AND m.authStatus = 'Y'
+      AND c.isActive = 'Y'
+""")
+List<String> findUniqueOrderCurrencies(
+        @Param("merchantId") String merchantId);
 
-if (CollectionUtils.isEmpty(paymodeMappings)) {
-    continue;
-}
 
-// 6. Process unique paymodes
-Set<String> uniquePaymodes = paymodeMappings.stream()
-        .map(MerchantPaymodeMapping::getPaymodeCode)
-        .filter(Objects::nonNull)
-        .collect(Collectors.toCollection(LinkedHashSet::new));
 
-for (String paymodeCode : uniquePaymodes) {
+public RfcFetchResponse fetchRfc(String merchantId) {
 
-    String uniqueKey =
-            orderCurrency + "|" + paymodeCode;
+    List<String> currencies =
+            mappingRepository.findUniqueOrderCurrencies(merchantId);
 
-    if (!processedCombinations.add(uniqueKey)) {
-        continue;
+    List<RfcResponse> response = new ArrayList<>();
+
+    for (String currency : currencies) {
+
+        Optional<MerchantRfcRuleConfig> config =
+                rfcRepository
+                    .findByMerchantIdAndOrderCurrencyCodeAndAuthStatus(
+                            merchantId,
+                            currency,
+                            "Y");
+
+        if (config.isPresent()) {
+            response.add(mapToResponse(config.get()));
+        } else {
+            response.add(getDefaultRfc(currency));
+        }
     }
 
-    // VVL check
-    Optional<MerchantVvlRule> vvlOptional =
-            merchantVvlRuleRepository
-                    .findByMerchantIdAndOrderCurrencyCodeAndPaymodeCode(
-                            mId,
-                            orderCurrency,
-                            paymodeCode
-                    );
-
-    if (vvlOptional.isPresent()) {
-
-        result.add(
-                merchantVvlRuleMapper.toDto(
-                        vvlOptional.get()
-                )
-        );
-
-    } else {
-
-        result.add(
-                createDefaultVvlDto(
-                        mId,
-                        orderCurrency,
-                        paymodeCode
-                )
-        );
-    }
+    return RfcFetchResponse.builder()
+            .merchantId(merchantId)
+            .rfc(response)
+            .build();
 }
+
