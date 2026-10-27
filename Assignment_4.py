@@ -1,62 +1,79 @@
-@Transactional
-public List<MerchantRfcDto> updateMerchantRfcInfo(
-        String mId, RiskManagementDto riskManagementDto) {
+@Service
+@RequiredArgsConstructor
+public class PricingEntityServiceImpl
+        implements PricingEntityService {
 
-    logger.info("Processing merchant RFC info for mID: {}", mId);
+    private final MerchantPaygatewayMappingRepository mappingRepository;
+    private final PaygatewayMasterRepository paygatewayMasterRepository;
+    private final ChannelPricingRepository channelPricingRepository;
+    private final DefaultChannelPricingRepository defaultChannelPricingRepository;
+    private final PricingEntityMapper pricingEntityMapper;
 
-    List<MerchantRfcDto> requestList = riskManagementDto.getMerchantRfcDto();
+    @Override
+    public PricingEntityResponse getPricingEntity(String mid) {
 
-    if (CollectionUtils.isEmpty(requestList)) {
-        return Collections.emptyList();
-    }
+        List<MerchantPaygatewayMapping> mappings =
+                mappingRepository.findByMerchantId(mid);
 
-    Map<UUID, MerchantRfc> existingRecords = merchantRfcRepository
-            .findByMerchantId(mId)
-            .stream()
-            .collect(Collectors.toMap(
-                    MerchantRfc::getId,
-                    Function.identity()
-            ));
-
-    List<MerchantRfc> recordsToSave = requestList.stream()
-            .map(request -> prepareMerchantRfc(request, mId, existingRecords))
-            .collect(Collectors.toList());
-
-    List<MerchantRfc> savedRecords = merchantRfcRepository.saveAll(recordsToSave);
-
-    logger.info("Merchant RFC info processed successfully for mID: {}", mId);
-
-    return merchantRfcMapper.mapListEntityToResponse(savedRecords);
-}
-
-private MerchantRfc prepareMerchantRfc(
-        MerchantRfcDto request,
-        String mId,
-        Map<UUID, MerchantRfc> existingRecords) {
-
-    MerchantRfc entity;
-
-    if (request.getId() != null) {
-        entity = existingRecords.get(request.getId());
-
-        if (entity == null) {
-            throw new EntityNotFoundException(
-                    "Merchant RFC record not found for id: " + request.getId());
+        if (mappings.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Merchant mapping not found for MID: " + mid
+            );
         }
 
-        merchantRfcMapper.updateEntityFromRequest(request, entity);
+        List<PricingEntityItem> items = new ArrayList<>();
 
-        logger.debug("Merchant RFC record updated. mID: {}, id: {}",
-                mId, request.getId());
+        for (MerchantPaygatewayMapping mapping : mappings) {
 
-    } else {
-        entity = merchantRfcMapper.mapToListEntity(request);
-        entity.setMerchantId(mId);
+            // Fetch matching payment gateway
+            PaygatewayMaster gateway =
+                    paygatewayMasterRepository
+                            .findById(mapping.getPaygatewayId())
+                            .orElse(null);
 
-        logger.debug("New Merchant RFC record created for mID: {}", mId);
+            if (gateway == null) {
+                continue;
+            }
+
+            // Fetch merchant-specific channel pricing
+            List<ChannelPricing> channelPricing =
+                    channelPricingRepository
+                            .findByMerchantIdAndPaygatewayId(
+                                    mid,
+                                    mapping.getPaygatewayId()
+                            );
+
+            PricingEntityItem item;
+
+            if (channelPricing != null && !channelPricing.isEmpty()) {
+
+                // Merchant-specific pricing available
+                item = pricingEntityMapper.toItem(
+                        mapping,
+                        gateway,
+                        channelPricing
+                );
+
+            } else {
+
+                // Fetch default channel pricing
+                List<DefaultChannelPricing> defaultPricing =
+                        defaultChannelPricingRepository
+                                .findByPaygatewayId(
+                                        mapping.getPaygatewayId()
+                                );
+
+                item = pricingEntityMapper.toDefaultItem(
+                        mapping,
+                        gateway,
+                        defaultPricing
+                );
+            }
+
+            items.add(item);
+        }
+
+        return pricingEntityMapper.toResponse(mid, items);
     }
-
-    entity.setAuthStatus(MerchantAuthType.PENDING.name());
-
-    return entity;
 }
