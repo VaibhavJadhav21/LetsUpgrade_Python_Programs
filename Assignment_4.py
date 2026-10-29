@@ -1,79 +1,96 @@
-@Service
-@RequiredArgsConstructor
-public class PricingEntityServiceImpl
-        implements PricingEntityService {
+@Mapper(componentModel = "spring")
+public interface PricingEntityMapper {
 
-    private final MerchantPaygatewayMappingRepository mappingRepository;
-    private final PaygatewayMasterRepository paygatewayMasterRepository;
-    private final ChannelPricingRepository channelPricingRepository;
-    private final DefaultChannelPricingRepository defaultChannelPricingRepository;
-    private final PricingEntityMapper pricingEntityMapper;
+    @Mapping(
+        target = "pricingEntities",
+        source = "items"
+    )
+    PricingEntityResponse toResponse(
+            String mid,
+            List<PricingEntityItem> items
+    );
 
-    @Override
-    public PricingEntityResponse getPricingEntity(String mid) {
+    @Mapping(
+        target = "paygatewayId",
+        source = "mapping.paygatewayId"
+    )
+    @Mapping(
+        target = "aggregatorCode",
+        source = "gateway.aggregatorCode"
+    )
+    @Mapping(
+        target = "currencyCode",
+        source = "mapping.currencyCode"
+    )
+    @Mapping(
+        target = "paymodeCode",
+        source = "mapping.paymodeCode"
+    )
+    @Mapping(
+        target = "meCode",
+        source = "mapping.meCode"
+    )
+    @Mapping(
+        target = "pgMid",
+        source = "mapping.pgMid"
+    )
+    @Mapping(
+        target = "pgTid",
+        source = "mapping.pgTid"
+    )
+    @Mapping(
+        target = "pricingSource",
+        constant = "MERCHANT"
+    )
+    @Mapping(
+        target = "pricingDetails",
+        source = "pricing"
+    )
+    PricingEntityItem toItem(
+            MerchantPaygatewayMapping mapping,
+            PaygatewayMaster gateway,
+            List<ChannelPricing> pricing
+    );
 
-        List<MerchantPaygatewayMapping> mappings =
-                mappingRepository.findByMerchantId(mid);
-
-        if (mappings.isEmpty()) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Merchant mapping not found for MID: " + mid
-            );
-        }
-
-        List<PricingEntityItem> items = new ArrayList<>();
-
-        for (MerchantPaygatewayMapping mapping : mappings) {
-
-            // Fetch matching payment gateway
-            PaygatewayMaster gateway =
-                    paygatewayMasterRepository
-                            .findById(mapping.getPaygatewayId())
-                            .orElse(null);
-
-            if (gateway == null) {
-                continue;
-            }
-
-            // Fetch merchant-specific channel pricing
-            List<ChannelPricing> channelPricing =
-                    channelPricingRepository
-                            .findByMerchantIdAndPaygatewayId(
-                                    mid,
-                                    mapping.getPaygatewayId()
-                            );
-
-            PricingEntityItem item;
-
-            if (channelPricing != null && !channelPricing.isEmpty()) {
-
-                // Merchant-specific pricing available
-                item = pricingEntityMapper.toItem(
-                        mapping,
-                        gateway,
-                        channelPricing
-                );
-
-            } else {
-
-                // Fetch default channel pricing
-                List<DefaultChannelPricing> defaultPricing =
-                        defaultChannelPricingRepository
-                                .findByPaygatewayId(
-                                        mapping.getPaygatewayId()
-                                );
-
-                item = pricingEntityMapper.toDefaultItem(
-                        mapping,
-                        gateway,
-                        defaultPricing
-                );
-            }
-
-            items.add(item);
-        }
-
-        return pricingEntityMapper.toResponse(mid, items);
-    }
+    @Mapping(
+        target = "paygatewayId",
+        source = "mapping.paygatewayId"
+    )
+    @Mapping(
+        target = "aggregatorCode",
+        source = "gateway.aggregatorCode"
+    )
+    @Mapping(
+        target = "currencyCode",
+        source = "mapping.currencyCode"
+    )
+    @Mapping(
+        target = "paymodeCode",
+        source = "mapping.paymodeCode"
+    )
+    @Mapping(
+        target = "meCode",
+        source = "mapping.meCode"
+    )
+    @Mapping(
+        target = "pgMid",
+        source = "mapping.pgMid"
+    )
+    @Mapping(
+        target = "pgTid",
+        source = "mapping.pgTid"
+    )
+    @Mapping(
+        target = "pricingSource",
+        constant = "DEFAULT"
+    )
+    @Mapping(
+        target = "pricingDetails",
+        source = "pricing"
+    )
+    PricingEntityItem toDefaultItem(
+            MerchantPaygatewayMapping mapping,
+            PaygatewayMaster gateway,
+            List<DefaultChannelPricing> pricing
+    );
 }
