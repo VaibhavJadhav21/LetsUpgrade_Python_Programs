@@ -14,7 +14,7 @@ public AdminPortalResponse<PricingDto> getPricingByMerchantId(String mid) {
 
     for (MerchantPaygatewayMapping mapping : mappings) {
 
-        // 1. Fetch matching payment gateway
+        // Fetch matching payment gateway
         PaygatewayMaster gateway = paygatewayMasterRepository
                 .findById(mapping.getPaygatewayId())
                 .orElse(null);
@@ -23,45 +23,40 @@ public AdminPortalResponse<PricingDto> getPricingByMerchantId(String mid) {
             continue;
         }
 
-        // 2. Fetch merchant-specific channel pricing
-        List<ChannelPricingMaster> channelPricing =
-                channelPricingMasterRepository
-                        .findByMerchantIdAndPaygatewayId(
-                                mid,
-                                mapping.getPaygatewayId()
-                        );
+        // Fetch currency using currency code from mapping
+        CurrencyMaster currency = null;
 
-        PricingEntity item;
+        if (mapping.getCurrencyCode() != null
+                && !mapping.getCurrencyCode().isBlank()) {
 
-        if (channelPricing != null && !channelPricing.isEmpty()) {
-
-            // 3. Merchant-specific pricing found
-            item = pricingEntityMapper.toItem(
-                    mapping,
-                    gateway,
-                    channelPricing
-            );
-
-        } else {
-
-            // 4. Fetch default channel pricing from DB
-            List<ChannelPricingMaster> defaultPricing =
-                    channelPricingMasterRepository
-                            .findByMerchantIdIsNullAndPaygatewayId(
-                                    mapping.getPaygatewayId()
-                            );
-
-            // 5. Map default pricing
-            item = pricingEntityMapper.toDefaultItem(
-                    mapping,
-                    gateway,
-                    defaultPricing
-            );
+            currency = currencyMasterRepository
+                    .findByCurrencyCode(mapping.getCurrencyCode())
+                    .orElse(null);
         }
+
+        // Fetch default currency if mapping currency is unavailable
+        if (currency == null) {
+            currency = currencyMasterRepository
+                    .findFirstByIsDefaultTrueAndIsActiveTrue()
+                    .orElse(null);
+        }
+
+        // Map data into PricingEntity
+        PricingEntity item = pricingEntityMapper.toItem(
+                mapping,
+                gateway,
+                currency
+        );
 
         items.add(item);
     }
 
-    // 6. Map response
-    return pricingEntityMapper.toResponse(mid, items);
+    // Build response in your existing format
+    return AdminPortalResponse.<PricingDto>builder()
+            .data(Collections.singletonList(
+                    PricingDto.builder()
+                            .build(items)
+            ))
+            .status(SUCCESS_RESPONSE_CODE)
+            .build();
 }
