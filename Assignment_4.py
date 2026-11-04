@@ -1,26 +1,24 @@
-} else {
+public List<MerchantRfcDto> getMerchantRfcInfo(String mId) {
 
-    boolean alreadyExists =
-            merchantRfcRepository
-                    .existsByMerchantIdAndOrderCurrencyCodeAndAuthStatus(
-                            mId,
-                            requestDto.getOrderCurrencyCode(),
-                            MerchantAuthType.PENDING.name()
-                    );
+    Logger.info("Fetching MerchantRfcDetail. Calling database.");
 
-    if (alreadyExists) {
-        throw new BusinessException(
-                "Pending RFC already exists for this merchant and currency: "
-                        + requestDto.getOrderCurrencyCode()
-        );
+    List<String> currencies =
+            merchantCurrencyCombinationMappingRepository.findUniqueOrderCurrencies(mId);
+
+    List<MerchantRfcDto> response = new ArrayList<>();
+
+    for (String currency : currencies) {
+
+        List<MerchantRfc> config =
+                merchantRfcRepository.findByMerchantIdAndOrderCurrencyCode(mId, currency);
+
+        if (config != null && !config.isEmpty()) {
+
+            for (MerchantRfc rfcData : config) {
+                response.add(merchantRfcMapper.toDto(rfcData));
+            }
+        }
     }
 
-    merchantRfc = merchantRfcMapper.mapDtoListToEntityList(requestDto);
-
-    merchantRfc.setAuthStatus(MerchantAuthType.PENDING.name());
-    merchantRfc.setAggregatorCode(SBI_AGGREGATOR_CODE);
-    merchantRfc.setIsActive("Y");
-    merchantRfc.setMerchantId(mId);
-
-    Logger.info("New Merchant RFC record created. mID: {}", mId);
+    return response;
 }
