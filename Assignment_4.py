@@ -1,48 +1,52 @@
-Set<String> processedPayModes = new HashSet<>();
+public List<MerchantVvlRuleDto> getMerchantVvlRuleInfo(String mId) {
 
-for (UniqueCurrency currencyCombination : currencyCombinations) {
+    logger.info("Fetching Merchant VVL details for merchantId: {}", mId);
 
-    String orderCurrencyCode = currencyCombination.getOrderCurrencyCode();
-    String currencyCombCode = currencyCombination.getCurrencyCombCode();
+    List<MerchantVvlRuleDto> response = new ArrayList<>();
 
-    List<PayModeCode> payModes =
-            merchantPaymodeMappingRepository.findingPayModeForMerchant(
-                    mId, orderCurrencyCode, currencyCombCode);
+    List<UniqueCurrency> currencyCombinations =
+            merchantCurrencyCombinationMappingRepository
+                    .findUniqueOrderCurrencies(mId);
 
-    for (PayModeCode paymode : payModes) {
+    for (UniqueCurrency currencyCombination : currencyCombinations) {
 
-        String pmCode = paymode.getPaymodeCode();
+        String orderCurrencyCode =
+                currencyCombination.getOrderCurrencyCode();
 
-        // Avoid processing the same currency + paymode combination again
-        String uniqueKey = orderCurrencyCode + "_" + currencyCombCode + "_" + pmCode;
+        String currencyCombCode =
+                currencyCombination.getCurrencyCombCode();
 
-        if (!processedPayModes.add(uniqueKey)) {
-            continue;
-        }
+        // Fetch PayModes for each currency combination
+        List<PayModeCode> payModes =
+                merchantPaymodeMappingRepository.findingPayModeForMerchant(
+                        mId, orderCurrencyCode, currencyCombCode);
 
-        List<MerchantVvlRule> vvlRule =
-                merchantVvlRuleRepository.findByMerchantIdAndPaymodeCode(mId, pmCode);
+        for (PayModeCode paymode : payModes) {
 
-        if (ObjectUtils.isEmpty(vvlRule)) {
+            String pmCode = paymode.getPaymodeCode();
 
-            response.add(
-                    merchantVvlRuleMapper.toDefaultDto(mId, orderCurrencyCode, pmCode));
+            List<MerchantVvlRule> vvlRules =
+                    merchantVvlRuleRepository
+                            .findByMerchantIdAndPaymodeCodeAndOrderCurrencyCode(
+                                    mId, pmCode, orderCurrencyCode);
 
-        } else {
+            if (CollectionUtils.isEmpty(vvlRules)) {
 
-            // Remove duplicate records using their database ID
-            Map<UUID, MerchantVvlRule> uniqueRules = vvlRule.stream()
-                    .collect(Collectors.toMap(
-                            MerchantVvlRule::getId,
-                            Function.identity(),
-                            (existing, duplicate) -> existing,
-                            LinkedHashMap::new
-                    ));
+                // No VVL configuration: return default DTO
+                response.add(
+                        merchantVvlRuleMapper.toDefaultDto(
+                                mId, orderCurrencyCode, pmCode));
 
-            uniqueRules.values().forEach(rule ->
-                    response.add(merchantVvlRuleMapper.toDto(rule)));
+            } else {
+
+                // VVL configuration exists: return actual DTOs
+                for (MerchantVvlRule vvlRule : vvlRules) {
+                    response.add(
+                            merchantVvlRuleMapper.toDto(vvlRule));
+                }
+            }
         }
     }
-}
 
-return response;
+    return response;
+}
