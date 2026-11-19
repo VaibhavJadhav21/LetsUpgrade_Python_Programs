@@ -2,34 +2,33 @@
     SELECT CASE
         WHEN (
             EXISTS (
-                SELECT 1 FROM MERCHANT_RFC
-                WHERE MERCHANT_ID = :mId
-                  AND RECORD_STATUS = '1'
-                  AND AUTH_STATUS = 'REJECTED'
+                SELECT 1 FROM MERCHANT_RFC r
+                WHERE r.MERCHANT_ID = :mId
+                  AND r.RECORD_STATUS = 1
+                  AND r.AUTH_STATUS = 'REJECTED'
             )
-            OR
-            EXISTS (
-                SELECT 1 FROM MERCHANT_VVL
-                WHERE MERCHANT_ID = :mId
-                  AND RECORD_STATUS = '1'
-                  AND AUTH_STATUS = 'REJECTED'
+            OR EXISTS (
+                SELECT 1 FROM MERCHANT_VVL v
+                WHERE v.MERCHANT_ID = :mId
+                  AND v.RECORD_STATUS = 1
+                  AND v.AUTH_STATUS = 'REJECTED'
             )
         )
         AND NOT EXISTS (
-            SELECT 1 FROM MERCHANT_RFC
-            WHERE MERCHANT_ID = :mId
-              AND RECORD_STATUS = '1'
-              AND AUTH_STATUS = 'PENDING'
+            SELECT 1 FROM MERCHANT_RFC r
+            WHERE r.MERCHANT_ID = :mId
+              AND r.RECORD_STATUS = 1
+              AND r.AUTH_STATUS = 'PENDING'
         )
         AND NOT EXISTS (
-            SELECT 1 FROM MERCHANT_VVL
-            WHERE MERCHANT_ID = :mId
-              AND RECORD_STATUS = '1'
-              AND AUTH_STATUS = 'PENDING'
+            SELECT 1 FROM MERCHANT_VVL v
+            WHERE v.MERCHANT_ID = :mId
+              AND v.RECORD_STATUS = 1
+              AND v.AUTH_STATUS = 'PENDING'
         )
         THEN 1
         ELSE 0
     END
     FROM DUAL
     """, nativeQuery = true)
-Integer isRiskManagementRejected(@Param("mId") String mId);
+Boolean isRiskManagementRejected(@Param("mId") String mId);
